@@ -6,6 +6,6 @@ this repository has contained the corresponding Lab codes for computer networkin
 
 If you want to have a look at What was going on with my Computer-networking learning, you can have a link below :
 
-[computer networking notes and codes](https://github.com/Shinehale/Computer-networking )
+[computer networking notes and codes](https://github.com/Shinehale/Computer-networking)
 
 Thanks for your watching.
