@@ -20,7 +20,32 @@ Connection: close
 
 
 
+#### 2.2  Assignment
 
+```shell
+telnet 148.163.153.234 smtp
+HELO mycomputer.stanford.edu
+MAIL FROM: U202115980@standford.edu
+RCPT TO: cs144grader@gmail.com
+DATA
+FROM: U202115980@stanford.edu
+TO: cs144grader@gmail.com
+Subject: Hello from CS144 Lab 0!
+
+QUIT
+```
+
+#### 2.3 display
+
+##### server
+
+![](img/2-3-1.png)
+
+
+
+##### client
+
+![](img/2-3-2.png)
 
 
 
