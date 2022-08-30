@@ -49,3 +49,6 @@ QUIT
 
 
 
+because my poor linux orders inplementation, So I have to make conpensation for it 
+
+So the <Cmake> file is coming.
