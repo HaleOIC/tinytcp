@@ -14,26 +14,30 @@ void get_URL(const string &host, const string &path) {
     // then request the URL path given in the "path" string.
 
     string connectMsg; 
-    connectMsg += "telnet " + host + " http\r\n";
     connectMsg += "GET " + path + " HTTP/1.1\r\n";
     connectMsg += "Host: " + host + "\r\n";
     connectMsg += "Connection: close\r\n\r\n";
-    
-    TCPSocket sock1;
-    sock1.connect( Address("127.0.0.1", host) );
-
-    auto recvMsg = sock1.read();
-    sock1.close();
-
-    cout << recvMsg << endl;
+    // generate the connect message
 
 
+    TCPSocket sock;
+    Address addr(host, "http");
+    sock.connect( addr );
+    sock.write( connectMsg );
+
+    sock.shutdown(SHUT_WR);
+
+    while ( !sock.eof() ){
+        cout << sock.read(512);
+    }
+
+    sock.close();
     // Then you'll need to print out everything the server sends back,
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
 
-    cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
-    cerr << "Warning: get_URL() has not been implemented yet.\n";
+    // cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
+    // cerr << "Warning: get_URL() has not been implemented yet.\n";
 }
 
 int main(int argc, char *argv[]) {
