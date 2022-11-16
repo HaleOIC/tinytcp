@@ -14,16 +14,24 @@ class StreamReassembler {
     // Your code here -- add private members as necessary.
 
     // If the new string is bigger than the capacity, I'll discard all the segment. 
-    bool _EOF = false; //!< mark the status "eof"
     std::map< size_t, std::string > _innerMap{}; //!< Data structure for the unordered Bytes
     size_t _unorderedSize = 0; //!< The size of the unordered bytes
     size_t _wannaIndex = 0; //!< The index that wanted
     size_t _eofIndex = 0; //!< The index of the eof
 
+    bool _eofFlag = false;
+
 
     // default variables
     ByteStream _output;  //!< The reassembled in-order byte stream
     size_t _capacity = 0;    //!< The maximum number of bytes
+
+    // put the rest of the newString into the innerMap.
+    void put_string_innerMap(const std::string& tar, const size_t& index);
+
+    // judge and make the satisfying string into the _output.
+    void make_transition();
+
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
