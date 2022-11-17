@@ -86,53 +86,42 @@ void StreamReassembler::put_string_innerMap( const std::string& tar, const size_
      */
 
     auto iterLow = _innerMap.lower_bound( index );
+
     if ( iterLow != _innerMap.begin() ){
-        auto iter = iterLow; --iter;
+        auto iter = iterLow; 
+        --iter;
         size_t existIndex = iter -> first;
         string existStr = iter -> second;
-        if ( existIndex + existStr.size() > index ){
-            size_t len = existIndex + existStr.size() - index;
-            len = min( len, data.size() );
-            data = data.substr( len, data.size() - len );
-            index = index + len;
+        if ( existIndex + existStr.size() > index && existIndex < index ){
+            size_t cutLen = existIndex + existStr.size() - index;
+            cutLen = min( cutLen, data.size() );
+            data = data.substr( cutLen, data.size() - cutLen );
+            index = index + cutLen;
         }
     }
 
-    auto iterhigh = _innerMap.lower_bound( index + data.size() );
-    if ( iterhigh == _innerMap.begin() ) {
-            iterhigh = _innerMap.end();
-            iterLow = iterhigh;
-    }else{
-        --iterhigh;
-        auto iter = iterhigh;
-        size_t existIndex = iter -> first;
-        string existStr = iter -> second;
-        if ( existIndex + existStr.size() > index + data.size() ){
-            if ( iterhigh == _innerMap.begin() ){
-                size_t len = index + data.size() - existIndex;
-                len = min( len, data.size() );
-                data = data.substr( 0, data.size() - len );
-                iterhigh = _innerMap.end();
-                iterLow = iterhigh;
-            }else{
-                --iterhigh;
-                size_t len = index + data.size() - existIndex;
-                len = min( len, data.size() );
-                data = data.substr( 0, data.size() - len );
+    auto iter = _innerMap.lower_bound( index );
+    
+    while ( iter != _innerMap.end() && index <= iter -> first ){
+        if ( index + data.size() > iter -> first ) {
+            if ( index + data.size() > iter -> first + iter -> second.size() ){
+                _unorderedSize -= iter -> second.size();
+                iter = _innerMap.erase( iter );
+                continue;
+            }else {
+                size_t cutLen = index + data.size() - iter -> first;
+                cutLen = min( cutLen, data.size() );
+                data = data.substr( 0, data.size() - cutLen );
+                break;
             }
+
         }
+        else break;
     }
-    // there is something wrong here.
-    if ( !( iterhigh == iterLow && iterhigh == _innerMap.end() ) ){
-        if ( iterLow -> first < iterhigh -> first ) {
-            ++iterhigh;
-            size_t tot = 0;
-            for ( auto iter = iterLow; iter != iterhigh; ++ iter )
-                tot += (iter->second).size();
-            _innerMap.erase( iterLow, iterhigh );
-            _unorderedSize -= tot;
-        }
-    }
+    size_t firstUnacceptableIndex = _capacity - _output.buffer_size() + _wannaIndex;
+
+    if ( index >= firstUnacceptableIndex ) return;
+
     if ( data.size() > 0 ) {
         _innerMap.insert({ index, data });
         _unorderedSize += data.size();
@@ -141,23 +130,20 @@ void StreamReassembler::put_string_innerMap( const std::string& tar, const size_
     /**
      * if over the capacity, just throw away the bytes at the end.
      */
-    auto iter = _innerMap.end();
-    --iter;
-    while ( true ){
-        // if ( _innerMap.empty() ) break;
-        if ( _capacity >= _output.buffer_size() + _unorderedSize ) break;
-        if ( _capacity >= _output.buffer_size() + _unorderedSize - (iter->second).size()){
-            size_t len = _output.buffer_size() + _unorderedSize - _capacity;
-            string newData = (iter->second).substr(0, (iter->second).size() - len);
-            if ( newData.size() == 0 ) _innerMap.erase( iter );
-            else _innerMap[ iter->first ] = newData;
-            _unorderedSize -= len;
+    iter = _innerMap.end(); --iter;
+    while ( _innerMap.size() > 0 ){
+        if ( _capacity >= _unorderedSize + _output.buffer_size() )  break;
+        if ( _unorderedSize + _output.buffer_size() - iter->second.size() <= _capacity ){
+            size_t resLen = _capacity - _unorderedSize - _output.buffer_size() + iter->second.size();
+            string newData = iter->second.substr( 0, resLen );
+            _unorderedSize -= iter->second.size() - resLen;
+            _innerMap[ iter->first ] = newData;
             break;
-        }else{
-            _innerMap.erase( iter );
-            iter = _innerMap.end();
-            if ( iter == _innerMap.begin() ) break;
-            --iter;
+        }
+        else {
+            _unorderedSize -= iter->second.size();
+            iter = _innerMap.erase( iter );
+            iter--;
         }
     }
 }
@@ -165,15 +151,15 @@ void StreamReassembler::put_string_innerMap( const std::string& tar, const size_
 
 
 void StreamReassembler::make_transition(){
-    while ( true ){
-        if (_innerMap.size() == 0 ) break;
-        auto iter = _innerMap.find( _wannaIndex );
-        if ( iter != _innerMap.end() ){
-            _output.write( iter -> second );
-            _wannaIndex += (iter -> second).size();
-            _unorderedSize -= (iter->second).size();
-            _innerMap.erase( iter );
-        } else break;
+    for ( auto iter = _innerMap.begin(); iter != _innerMap.end();  ){
+        string existStr = iter->second;
+        size_t existIndex = iter->first;
+        if ( existIndex == _wannaIndex ){
+            _output.write( existStr );
+            _wannaIndex +=  existStr.size();
+            iter = _innerMap.erase( iter );
+            _unorderedSize -= existStr.size();
+        }else break;
     }
 }
 
