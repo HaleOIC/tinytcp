@@ -28,12 +28,11 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
 	if ( !_synFlag && synFlag ){
 		_isn = WrappingInt32( seqno );
 		_synFlag = true;
-		_checkPoint = seqno;
+		_checkPoint = 0;
 	}
-	uint64_t currenAck = _reassembler.stream_out().bytes_written() + 1;
-	uint64_t currenSeq = unwrap( WrappingInt32(seqno), _isn, currenAck );
+	_checkPoint = unwrap( WrappingInt32(seqno), _isn, _checkPoint );
 
-	uint64_t currenIndex = currenSeq - 1 + synFlag;
+	uint64_t currenIndex = _checkPoint - 1 + synFlag;
 	_reassembler.push_substring( data, currenIndex, finFlag );
 	
 }
