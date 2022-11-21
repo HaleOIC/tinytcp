@@ -10,9 +10,6 @@
 // For Lab 3, please replace with a real implementation that passes the
 // automated checks run by `make check_lab3`.
 
-template <typename... Targs>
-void DUMMY_CODE(Targs &&... /* unused */) {}
-
 using namespace std;
 
 //! \param[in] capacity the capacity of the outgoing byte stream
@@ -25,40 +22,6 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
 
 uint64_t TCPSender::bytes_in_flight() const {
     return  _outgoing_bytes;
-}
-
-void TCPSender::fill_window() {
-   size_t currentWindowSize = _last_windowSize ? _last_windowSize : 1;
-   while ( currentWindowSize > _outgoing_bytes ){
-        TCPSegment newSeg;
-        if ( !_synFlagSet ){
-            newSeg.header().syn = true;
-            _synFlagSet = true;
-        }
-
-        newSeg.header().seqno = next_seqno();
-        const size_t payloadSize = min( TCPConfig::MAX_PAYLOAD_SIZE,
-                currentWindowSize - _outgoing_bytes - newSeg.header().syn );
-        string payload = _stream.read( payloadSize );
-
-        if ( !_finFlagSet && _stream.eof() && payload.size() + _outgoing_bytes < currentWindowSize )
-                _finFlagSet = newSeg.header().fin = true;
-
-        newSeg.payload() = Buffer(move(payload));
-
-        if ( _outstandingMap.empty() ){
-            _timeCount = 0;
-            _timeout = _initial_retransmission_timeout;
-        }    
-
-        _outgoing_bytes += newSeg.length_in_sequence_space();
-        _outstandingMap.insert( {_next_seqno, newSeg } );
-        _next_seqno += newSeg.length_in_sequence_space();
-
-        if ( newSeg.header().fin ) break;
-
-   }
-
 }
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)
@@ -107,63 +70,66 @@ void TCPSender::send_empty_segment() {
 
 
 
-// void TCPSender::fill_window() {
-//     // calculate right now the windowsize.
-//     size_t currentWindowSize = _last_windowSize ? _last_windowSize : 1;
-//     // if ( _outgoing_bytes > currentWindowSize ) return;
-//     if ( currentWindowSize < _outgoing_bytes ) return;
-//     currentWindowSize -= _outgoing_bytes;
+void TCPSender::fill_window() {
+    // calculate right now the windowsize.
+    size_t currentWindowSize = _last_windowSize ? _last_windowSize : 1;
+    // if ( _outgoing_bytes > currentWindowSize ) return;
+    if ( currentWindowSize < _outgoing_bytes ) return;
+    currentWindowSize -= _outgoing_bytes;
  
-//     TCPSegment newSeg;
-//     if ( !_synFlagSet ){
-//         _synFlagSet = true;
-//         newSeg.header().syn = true;
-//     }
+    TCPSegment newSeg;
+    if ( !_synFlagSet ){
+        _synFlagSet = true;
+        newSeg.header().syn = true;
+    }
 
-//     if ( _outstandingMap.empty() ) {
-//         _timeout = _initial_retransmission_timeout;
-//         _timeCount = 0;
-//     }
+    if ( _outstandingMap.empty() ) {
+        _timeout = _initial_retransmission_timeout;
+        _timeCount = 0;
+    }
 
-//     while ( currentWindowSize > 0 ){
-//         size_t size = min( currentWindowSize, TCPConfig::MAX_PAYLOAD_SIZE );
-//         size -= newSeg.length_in_sequence_space();
-//         string data = _stream.read( size );
+    while ( currentWindowSize > 0 ){
+        size_t size = min( currentWindowSize, TCPConfig::MAX_PAYLOAD_SIZE );
+        size -= newSeg.length_in_sequence_space();
+        string data = _stream.read( size );
+        cout << data.size();
 
-//         // it means no data will place into the payload
-//         if ( data.size() == 0 ) break;
-//         // set the payload 
-//         newSeg.payload() = Buffer(move(data));
-//         // in this case, the segment has not been in the MAX
-//         if ( newSeg.length_in_sequence_space() != TCPConfig::MAX_PAYLOAD_SIZE 
-//                 && newSeg.length_in_sequence_space() != size  ) break;
+        // it means no data will place into the payload
+        if ( data.size() == 0 ) break;
+        // set the payload 
+        newSeg.payload() = Buffer(move(data));
+        // in this case, the segment has not been in the MAX
+        if ( newSeg.length_in_sequence_space() != TCPConfig::MAX_PAYLOAD_SIZE 
+                && newSeg.length_in_sequence_space() != size ) break;
+        if ( newSeg.length_in_sequence_space() == TCPConfig::MAX_PAYLOAD_SIZE 
+                && _stream.eof() ) break;
+        // put the segment into the _segments_out and the map.
+        newSeg.header().seqno = wrap( _next_seqno, _isn );
+        _segments_out.push( newSeg );
+        _outstandingMap.insert({ _next_seqno, newSeg });
+        _outgoing_bytes += newSeg.length_in_sequence_space();
+        _next_seqno += newSeg.length_in_sequence_space();
+        currentWindowSize -= newSeg.length_in_sequence_space();
+        newSeg = TCPSegment();
+    }
 
-//         // put the segment into the _segments_out and the map.
-//         newSeg.header().seqno = wrap( _next_seqno, _isn );
-//         _segments_out.push( newSeg );
-//         _outstandingMap.insert({ _next_seqno, newSeg });
-//         _outgoing_bytes += newSeg.length_in_sequence_space();
-//         _next_seqno += newSeg.length_in_sequence_space();
-//         currentWindowSize -= newSeg.length_in_sequence_space();
-//         newSeg = TCPSegment();
-//     }
 
-//     if ( _stream.eof() && !_finFlagSet ) {
-//         if ( currentWindowSize > 0 ){
-//             _finFlagSet = true;
-//             newSeg.header().fin = true;
-//         }
-//     }
+    if ( _stream.eof() && !_finFlagSet ) {
+        if ( currentWindowSize > 0 ){
+            _finFlagSet = true;
+            newSeg.header().fin = true;
+        }
+    }
 
-//     if ( newSeg.length_in_sequence_space() > 0 ){
-//         newSeg.header().seqno = wrap( _next_seqno, _isn );
-//         _segments_out.push( newSeg );
-//         _outstandingMap.insert( { _next_seqno, newSeg} );
-//         _outgoing_bytes += newSeg.length_in_sequence_space();
-//         currentWindowSize -= newSeg.length_in_sequence_space();
-//         _next_seqno += newSeg.length_in_sequence_space();
-//     } 
-// }
-// as above codes only make it to 97% correct
-
+    if ( newSeg.length_in_sequence_space() > 0 ){
+        newSeg.header().seqno = wrap( _next_seqno, _isn );
+        _segments_out.push( newSeg );
+        _outstandingMap.insert( { _next_seqno, newSeg} );
+        _outgoing_bytes += newSeg.length_in_sequence_space();
+        currentWindowSize -= newSeg.length_in_sequence_space();
+        _next_seqno += newSeg.length_in_sequence_space();
+    }
+    cout << _outgoing_bytes << endl;
+ 
+}
 
