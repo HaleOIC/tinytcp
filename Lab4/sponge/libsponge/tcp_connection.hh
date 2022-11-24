@@ -22,11 +22,16 @@ class TCPConnection {
     bool _linger_after_streams_finish{true};
 
 
-    // personal new defination.
+    // personal new defination of the variables.
     bool _activeFlag = false;
+    bool _establishment = false;
     size_t _lastTimeRecieved = 0;
     size_t _timecount = 0;
     size_t _timeout = 0;
+
+    // personla new defination of the functions.
+    void shift_with_ackno();
+    void set_rst();
 
   public:
     //! \name "Input" interface for the writer
