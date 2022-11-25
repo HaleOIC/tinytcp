@@ -32,6 +32,7 @@ class TCPConnection {
     // personla new defination of the functions.
     void shift_with_ackno();
     void set_rst();
+    void test_shut_down_connection();
 
   public:
     //! \name "Input" interface for the writer

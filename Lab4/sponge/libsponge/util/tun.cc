@@ -2,8 +2,6 @@
 
 #include "util.hh"
 
-#include <sys/socket.h>
-
 #include <cstring>
 #include <fcntl.h>
 #include <linux/if.h>

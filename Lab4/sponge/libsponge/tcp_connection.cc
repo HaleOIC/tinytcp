@@ -35,61 +35,59 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     _receiver.segment_received(seg);
 
     // give the header information to the _sender.
-    if ( seg.header().ack ) _sender.ack_received( seg.header().ackno, seg.header().win );
-
-    if ( !_sender.stream_in().eof() && _receiver.stream_out().input_ended() ) _linger_after_streams_finish = false;
+   bool ackJudge = seg.header().ack;
+   if ( ackJudge ) _sender.ack_received( seg.header().ackno, seg.header().win );
 
 
     // handle other TCP connection statuses
     // <! establishment is a flag that remarks the if it has the connection.
     if ( seg.header().syn && !_establishment ) {
-        _establishment = true;
-        _sender.fill_window(); // generate the segment with SYN
-        shift_with_ackno();    // fill in the ackno and ack flag it may rewirte in the after 
-        _activeFlag = true;
+        if ( ackJudge ) _establishment = true;
+        else _sender.fill_window(); // generate the segment with SYN
+    } else if ( !_establishment && ackJudge ) _establishment = true;
+
+
+
+    if ( seg.length_in_sequence_space() > 0 || !_sender.segments_out().empty() ) {
+        _sender.fill_window();
+        if ( _sender.segments_out().empty() ) _sender.send_empty_segment();
     }
 
     // give back the message after handle the TCPsegment
     if ( seg.length_in_sequence_space() == 0 && _receiver.ackno().has_value()
         && seg.header().seqno == _receiver.ackno().value() - 1 ){
         _sender.send_empty_segment();
-
-    }
-
-    if ( _receiver.unassembled_bytes() == 0 &&  _receiver.stream_out().input_ended() ) {
-        // satisfy the #1
-        if ( _sender.bytes_in_flight() == 0 
-            && _sender.segments_out().empty() 
-            && _sender.stream_in().input_ended() 
-            && _sender.stream_in().bytes_written() == _sender.next_seqno_absolute() - 2 ) {
-            // satisfy #2
-            if ( !_linger_after_streams_finish || time_since_last_segment_received() >= 10 * _cfg.rt_timeout ){
-                _activeFlag = false;
-            }
-        }
-
     }
 
     shift_with_ackno();
+    test_shut_down_connection();
 
 }
 
 bool TCPConnection::active() const { return _activeFlag; }
 
 size_t TCPConnection::write(const string &data) {
+
     auto bytes = _sender.stream_in().write(data);
     _sender.fill_window();
     shift_with_ackno();
     return bytes;
+
 }
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
 void TCPConnection::tick(const size_t ms_since_last_tick) {
+
     _timecount += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
     // over the standard retransmission times.
-    if ( _sender.consecutive_retransmissions() > _cfg.MAX_RETX_ATTEMPTS ) set_rst();
+    if ( _sender.consecutive_retransmissions() > _cfg.MAX_RETX_ATTEMPTS ) {
+        // _sender.segments_out().pop();
+        set_rst();
+        return;
+    }
     shift_with_ackno();
+    test_shut_down_connection();
 
 }
 
@@ -101,12 +99,12 @@ void TCPConnection::end_input_stream() {
 }
 
 void TCPConnection::connect() {
+    if ( _sender.next_seqno_absolute() != 0 ) return;
     // send out a syn flag and send it out 
     _sender.fill_window();
     // set the active flag to true
     _activeFlag = true;
-    
-
+    shift_with_ackno();
 }
 
 TCPConnection::~TCPConnection() {
@@ -130,30 +128,43 @@ TCPConnection::~TCPConnection() {
  */ 
 
 void TCPConnection::set_rst(){
+    // send the segment with the rst flag is on.
     TCPSegment newSeg;
     newSeg.header().rst = true;
     _segments_out.push(newSeg);
-    shift_with_ackno();
+    
+    // set some other related status.
     _receiver.stream_out().set_error();
     _sender.stream_in().set_error();
     _activeFlag = false;
+    _linger_after_streams_finish = false;
 }
 
 void TCPConnection::shift_with_ackno(){
     // shift the TCPSegment in the outqueue with new ackno and ack flag.
     if ( !_receiver.ackno().has_value() ) return;
     auto ackno = _receiver.ackno().value();
-    queue<TCPSegment> newQue;
     while ( !_sender.segments_out().empty() ){
         auto seg = _sender.segments_out().front();
         seg.header().ack = true;
         seg.header().ackno = ackno;
         seg.header().win = _receiver.window_size();
-        newQue.push( seg );
+        _segments_out.push( seg );
         _sender.segments_out().pop();
     }
-    while ( !newQue.empty() ) {
-        _sender.segments_out().push( newQue.front() );
-        newQue.pop();
+}
+
+void TCPConnection::test_shut_down_connection(){
+
+    if (_receiver.stream_out().input_ended() && !_sender.stream_in().eof() && _sender.next_seqno_absolute() > 0) 
+        _linger_after_streams_finish = false;
+    else if ( _receiver.stream_out().eof() && _sender.stream_in().eof() 
+                && unassembled_bytes() == 0 && bytes_in_flight() == 0 
+                && _sender.next_seqno_absolute() == _sender.stream_in().bytes_written() + 2 ) {
+        if ( !_linger_after_streams_finish )
+            _activeFlag = false;
+        else if ( time_since_last_segment_received() >= 10 * _cfg.rt_timeout )
+            _activeFlag = false;
     }
+
 }
